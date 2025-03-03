@@ -1,13 +1,27 @@
 /* global chrome */
 
-// CSS selectors for LinkedIn job posting page elements
-const LINKEDIN_SELECTORS = {
-  company: ".job-details-jobs-unified-top-card__company-name",
-  jobTitle: ".t-24.job-details-jobs-unified-top-card__job-title",
-  applyButton:
-    '.jobs-apply-button--top-card button, button[role="link"][aria-label*="Apply to"]',
-  compensation:
-    ".job-details-preferences-and-skills__pill .ui-label.text-body-small",
+// CSS selectors for job posting page elements
+const SITE_SELECTORS = {
+  linkedin: {
+    company: ".job-details-jobs-unified-top-card__company-name",
+    jobTitle: ".t-24.job-details-jobs-unified-top-card__job-title",
+    applyButton:
+      '.jobs-apply-button--top-card button, button[role="link"][aria-label*="Apply to"]',
+    compensation:
+      ".job-details-preferences-and-skills__pill .ui-label.text-body-small",
+  },
+  wellfound: {
+    company: 'a[href*="/company/"] .text-sm.font-semibold.text-black',
+    jobTitle: "h1.inline.text-xl.font-semibold.text-black",
+    applyButton: "SELECTOR_HERE",
+    compensation: "ul.text-md.text-black li",
+  },
+};
+
+const detectSite = (url) => {
+  if (url.includes("linkedin.com")) return "linkedin";
+  if (url.includes("wellfound.com")) return "wellfound";
+  return null;
 };
 
 /**
@@ -15,15 +29,13 @@ const LINKEDIN_SELECTORS = {
  * This function is injected into the page context by the Chrome scripting API.
  */
 const scrapeJobInfo = () => {
-  // Duplicate selectors inside function since they can't be passed directly to the page context
-  const SELECTORS = {
-    company: ".job-details-jobs-unified-top-card__company-name",
-    jobTitle: ".t-24.job-details-jobs-unified-top-card__job-title",
-    applyButton:
-      '.jobs-apply-button--top-card button, button[role="link"][aria-label*="Apply to"]',
-    compensation:
-      ".job-details-preferences-and-skills__pill .ui-label.text-body-small",
-  };
+  const site = detectSite(window.location.href);
+  if (!site) {
+    chrome.runtime.sendMessage({ error: "Unsupported website" });
+    return;
+  }
+
+  const SELECTORS = SITE_SELECTORS[site];
 
   // Utility function to safely get text content from an element
   const getElementText = (selector) => {
@@ -31,10 +43,16 @@ const scrapeJobInfo = () => {
   };
 
   // Determine if the job uses Quick Apply or Traditional Application
-  const getApplicationType = (buttonText) => {
-    return buttonText.toLowerCase().includes("easy apply")
-      ? "Quick apply"
-      : "Traditional App";
+  const getApplicationType = (buttonText, site) => {
+    if (site === "linkedin") {
+      return buttonText.toLowerCase().includes("easy apply")
+        ? "Quick apply"
+        : "Traditional App";
+    }
+    if (site === "wellfound") {
+      return "Quick apply";
+    }
+    return "Traditional App";
   };
 
   // Extract compensation if it contains a dollar amount, otherwise return empty
@@ -59,7 +77,7 @@ const scrapeJobInfo = () => {
     jobTitle: getElementText(SELECTORS.jobTitle),
     location: "Remote",
     status: "Applied",
-    applicationType: getApplicationType(buttonText),
+    applicationType: getApplicationType(buttonText, site),
     pageUrl: window.location.href,
     compensation: getCompensation(compensationText),
   };
@@ -110,11 +128,98 @@ const copyToClipboard = async (text) => {
 
 // When the "Scrape Job Info" button is clicked in the popup
 document.getElementById("scrape").addEventListener("click", () => {
-  // Get the active tab and inject the scraping script
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     chrome.scripting.executeScript({
       target: { tabId: tabs[0].id },
-      function: scrapeJobInfo,
+      function: () => {
+        // Include all necessary functions and variables in the injection scope
+        const SITE_SELECTORS = {
+          linkedin: {
+            company: ".job-details-jobs-unified-top-card__company-name",
+            jobTitle: ".t-24.job-details-jobs-unified-top-card__job-title",
+            applyButton:
+              '.jobs-apply-button--top-card button, button[role="link"][aria-label*="Apply to"]',
+            compensation:
+              ".job-details-preferences-and-skills__pill .ui-label.text-body-small",
+          },
+          wellfound: {
+            company: 'a[href*="/company/"] .text-sm.font-semibold.text-black',
+            jobTitle: "h1.inline.text-xl.font-semibold.text-black",
+            applyButton: "SELECTOR_HERE",
+            compensation: "ul.text-md.text-black li",
+          },
+        };
+
+        const detectSite = (url) => {
+          if (url.includes("linkedin.com")) return "linkedin";
+          if (url.includes("wellfound.com")) return "wellfound";
+          return null;
+        };
+
+        const getElementText = (selector) => {
+          return document.querySelector(selector)?.innerText.trim() || "";
+        };
+
+        const getApplicationType = (buttonText, site) => {
+          if (site === "linkedin") {
+            return buttonText.toLowerCase().includes("easy apply")
+              ? "Quick apply"
+              : "Traditional App";
+          }
+          if (site === "wellfound") {
+            return "Quick apply";
+          }
+          return "Traditional App";
+        };
+
+        const getCompensation = (text) => {
+          return text.includes("$") ? text : "";
+        };
+
+        const getFormattedDate = () => {
+          const today = new Date();
+          return `${
+            today.getMonth() + 1
+          }/${today.getDate()}/${today.getFullYear()}`;
+        };
+
+        const site = detectSite(window.location.href);
+        if (!site) {
+          chrome.runtime.sendMessage({ error: "Unsupported website" });
+          return;
+        }
+
+        const SELECTORS = SITE_SELECTORS[site];
+        const buttonText = getElementText(SELECTORS.applyButton);
+        const compensationText = getElementText(SELECTORS.compensation);
+
+        const jobInfo = {
+          date: getFormattedDate(),
+          company: getElementText(SELECTORS.company),
+          jobTitle: getElementText(SELECTORS.jobTitle),
+          location: "Remote",
+          status: "Applied",
+          applicationType: getApplicationType(buttonText, site),
+          pageUrl: window.location.href,
+          compensation: getCompensation(compensationText),
+        };
+
+        const formattedData = [
+          jobInfo.date,
+          jobInfo.company,
+          jobInfo.jobTitle,
+          jobInfo.location,
+          jobInfo.status,
+          jobInfo.applicationType,
+          jobInfo.pageUrl,
+          "",
+          "",
+          "FALSE",
+          jobInfo.compensation,
+        ].join("\t");
+
+        chrome.runtime.sendMessage({ data: formattedData });
+      },
     });
   });
 });
