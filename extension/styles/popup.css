@@ -1,0 +1,28 @@
+body {
+  width: 300px;
+  padding: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.notification {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #4caf50;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.notification.show {
+  opacity: 1;
+}
+
+button {
+  width: 100%;
+  padding: 8px;
+  margin-top: 16px;
+}

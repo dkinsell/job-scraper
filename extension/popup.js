@@ -84,14 +84,25 @@ const scrapeJobInfo = () => {
   chrome.runtime.sendMessage({ data: formattedData });
 };
 
+const showNotification = () => {
+  const notification = document.getElementById("notification");
+  notification.classList.add("show");
+  setTimeout(() => {
+    notification.classList.remove("show");
+  }, 2000); // Hide after 2 seconds
+};
+
 // Copies the formatted job data to the clipboard and shows a success/error message.
 const copyToClipboard = async (text) => {
   try {
     await navigator.clipboard.writeText(text);
-    alert("Job information copied to clipboard!");
+    showNotification();
   } catch (err) {
     console.error("Failed to copy text:", err);
-    alert("Failed to copy job information. Please try again.");
+    const notification = document.getElementById("notification");
+    notification.textContent = "Failed to copy. Please try again.";
+    notification.style.backgroundColor = "#f44336"; // Red color for error
+    showNotification();
   }
 };
 
