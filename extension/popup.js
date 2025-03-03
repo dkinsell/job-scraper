@@ -76,6 +76,7 @@ const scrapeJobInfo = () => {
     jobInfo.pageUrl,
     "",
     "",
+    "FALSE",
     jobInfo.compensation,
   ].join("\t");
 
