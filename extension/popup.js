@@ -1,5 +1,9 @@
 /* global chrome */
 
+// -------------------------------------
+// Shared Functions & Variables
+// -------------------------------------
+
 // CSS selectors for job posting page elements
 const SITE_SELECTORS = {
   linkedin: {
@@ -18,121 +22,44 @@ const SITE_SELECTORS = {
   },
 };
 
+// Helper: Detect which site we’re on based on the URL
 const detectSite = (url) => {
   if (url.includes("linkedin.com")) return "linkedin";
   if (url.includes("wellfound.com")) return "wellfound";
   return null;
 };
 
-/**
- * Main function that scrapes job information from the LinkedIn page.
- * This function is injected into the page context by the Chrome scripting API.
- */
-const scrapeJobInfo = () => {
-  const site = detectSite(window.location.href);
-  if (!site) {
-    chrome.runtime.sendMessage({ error: "Unsupported website" });
-    return;
-  }
-
-  const SELECTORS = SITE_SELECTORS[site];
-
-  // Utility function to safely get text content from an element
-  const getElementText = (selector) => {
-    return document.querySelector(selector)?.innerText.trim() || "";
-  };
-
-  // Determine if the job uses Quick Apply or Traditional Application
-  const getApplicationType = (buttonText, site) => {
-    if (site === "linkedin") {
-      return buttonText.toLowerCase().includes("easy apply")
-        ? "Quick apply"
-        : "Traditional App";
-    }
-    if (site === "wellfound") {
-      return "Quick apply";
-    }
-    return "Traditional App";
-  };
-
-  // Extract compensation if it contains a dollar amount, otherwise return empty
-  const getCompensation = (text) => {
-    return text.includes("$") ? text : "";
-  };
-
-  // Get today's date in MM/DD/YYYY format
-  const getFormattedDate = () => {
-    const today = new Date();
-    return `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
-  };
-
-  // Extract text from the apply button and compensation elements
-  const buttonText = getElementText(SELECTORS.applyButton);
-  const compensationText = getElementText(SELECTORS.compensation);
-
-  // Collect all job information into a structured object
-  const jobInfo = {
-    date: getFormattedDate(),
-    company: getElementText(SELECTORS.company),
-    jobTitle: getElementText(SELECTORS.jobTitle),
-    location: "Remote",
-    status: "Applied",
-    applicationType: getApplicationType(buttonText, site),
-    pageUrl: window.location.href,
-    compensation: getCompensation(compensationText),
-  };
-
-  // Format data for spreadsheet with tabs between columns (A through K)
-  // Empty strings represent empty columns in the spreadsheet
-  const formattedData = [
-    jobInfo.date,
-    jobInfo.company,
-    jobInfo.jobTitle,
-    jobInfo.location,
-    jobInfo.status,
-    jobInfo.applicationType,
-    jobInfo.pageUrl,
-    "",
-    "",
-    "FALSE",
-    jobInfo.compensation,
-  ].join("\t");
-
-  // Send the formatted data back to the extension popup
-  chrome.runtime.sendMessage({ data: formattedData });
-};
-
-const showNotification = () => {
+// Helper: Show a notification message
+const showNotification = (message = "Copied to clipboard!") => {
   const notification = document.getElementById("notification");
+  notification.textContent = message;
   notification.classList.add("show");
   setTimeout(() => {
     notification.classList.remove("show");
-  }, 2000); // Hide after 2 seconds
+  }, 2000);
 };
 
-// Copies the formatted job data to the clipboard and shows a success/error message.
+// Helper: Copy text to clipboard
 const copyToClipboard = async (text) => {
   try {
     await navigator.clipboard.writeText(text);
-    showNotification();
+    showNotification("Copied to clipboard!");
   } catch (err) {
     console.error("Failed to copy text:", err);
-    const notification = document.getElementById("notification");
-    notification.textContent = "Failed to copy. Please try again.";
-    notification.style.backgroundColor = "#f44336"; // Red color for error
-    showNotification();
+    showNotification("Failed to copy. Please try again.");
   }
 };
 
-// Event Listeners
+// -------------------------------------
+// 1. Scrape Job Info Functionality
+// -------------------------------------
 
-// When the "Scrape Job Info" button is clicked in the popup
 document.getElementById("scrape").addEventListener("click", () => {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     chrome.scripting.executeScript({
       target: { tabId: tabs[0].id },
       function: () => {
-        // Include all necessary functions and variables in the injection scope
+        // Redefine functions and selectors within the page context
         const SITE_SELECTORS = {
           linkedin: {
             company: ".job-details-jobs-unified-top-card__company-name",
@@ -204,6 +131,7 @@ document.getElementById("scrape").addEventListener("click", () => {
           compensation: getCompensation(compensationText),
         };
 
+        // Format data for spreadsheet (tab-separated)
         const formattedData = [
           jobInfo.date,
           jobInfo.company,
@@ -224,9 +152,43 @@ document.getElementById("scrape").addEventListener("click", () => {
   });
 });
 
-// Listen for the scraped data from the injected script
+// Listen for scraped data and copy it to clipboard
 chrome.runtime.onMessage.addListener((request) => {
   if (request.data) {
     copyToClipboard(request.data);
   }
+});
+
+// -------------------------------------
+// 2. Dismiss All Jobs Functionality
+// -------------------------------------
+
+// Updated CSS selector based on your provided HTML:
+const DISMISS_SELECTOR = 'button[aria-label^="Dismiss"]';
+
+document.getElementById("dismissAll").addEventListener("click", () => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    chrome.scripting.executeScript(
+      {
+        target: { tabId: tabs[0].id },
+        function: (selector) => {
+          // Delay to allow any dynamic elements to load
+          setTimeout(() => {
+            const buttons = document.querySelectorAll(selector);
+            buttons.forEach((btn) => btn.click());
+            // Return the number of buttons clicked
+            return buttons.length;
+          }, 1000);
+        },
+        args: [DISMISS_SELECTOR],
+      },
+      (results) => {
+        if (results && results[0] && results[0].result !== undefined) {
+          const count = results[0].result;
+          console.log(`Dismissed ${count} job(s).`);
+          showNotification(`Dismissed ${count} job(s).`);
+        }
+      }
+    );
+  });
 });
