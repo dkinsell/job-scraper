@@ -172,15 +172,22 @@ document.getElementById("dismissAll").addEventListener("click", () => {
       {
         target: { tabId: tabs[0].id },
         function: (selector) => {
-          // Delay to allow any dynamic elements to load
-          setTimeout(() => {
-            const buttons = document.querySelectorAll(selector);
-            buttons.forEach((btn) => btn.click());
-            // Return the number of buttons clicked
-            return buttons.length;
-          }, 1000);
+          return new Promise((resolve) => {
+            setTimeout(() => {
+              // Get all elements that match the selector
+              const allButtons = Array.from(
+                document.querySelectorAll(selector)
+              );
+              // Filter to include only visible buttons
+              const visibleButtons = allButtons.filter(
+                (btn) => btn.offsetParent !== null
+              );
+              visibleButtons.forEach((btn) => btn.click());
+              resolve(visibleButtons.length);
+            }, 1000);
+          });
         },
-        args: [DISMISS_SELECTOR],
+        args: ['button[aria-label^="Dismiss"]'],
       },
       (results) => {
         if (results && results[0] && results[0].result !== undefined) {
