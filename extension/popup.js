@@ -50,6 +50,21 @@ const copyToClipboard = async (text) => {
   }
 };
 
+// Helper function to extract job ID from URL
+const getJobIdFromUrl = (url) => {
+  if (!url) return null;
+
+  // Handle view URL format: .../jobs/view/4204546104/
+  const viewMatch = url.match(/\/view\/(\d+)/);
+  if (viewMatch) return viewMatch[1];
+
+  // Handle search URL format: ...currentJobId=4204546104&...
+  const searchMatch = url.match(/currentJobId=(\d+)/);
+  if (searchMatch) return searchMatch[1];
+
+  return null;
+};
+
 // -------------------------------------
 // 1. Scrape Job Info Functionality
 // -------------------------------------
@@ -160,7 +175,7 @@ chrome.runtime.onMessage.addListener((request) => {
 });
 
 // -------------------------------------
-// 2. Dismiss All Jobs Functionality
+// 2. Dismiss Unviewed Jobs Functionality
 // -------------------------------------
 
 // Updated CSS selector based on your provided HTML:
@@ -174,26 +189,60 @@ document.getElementById("dismissAll").addEventListener("click", () => {
         function: (selector) => {
           return new Promise((resolve) => {
             setTimeout(() => {
-              // Get all elements that match the selector
               const allButtons = Array.from(
                 document.querySelectorAll(selector)
               );
-              // Filter to include only visible buttons
-              const visibleButtons = allButtons.filter(
-                (btn) => btn.offsetParent !== null
-              );
-              visibleButtons.forEach((btn) => btn.click());
-              resolve(visibleButtons.length);
-            }, 1000);
+              let dismissedCount = 0;
+
+              allButtons.forEach((btn) => {
+                // Find the parent job card for this dismiss button
+                const jobCard = btn.closest(".job-card-container");
+                if (!jobCard) return; // Skip if we can't find the card
+
+                // Check if the job card contains the "Viewed" text indicator
+                const footerItems = jobCard.querySelectorAll(
+                  ".job-card-container__footer-item"
+                );
+                let hasViewedTag = false;
+                footerItems.forEach((item) => {
+                  if (item.innerText.includes("Viewed")) {
+                    hasViewedTag = true;
+                  }
+                });
+
+                // Only click the dismiss button if the job card does NOT have the "Viewed" tag
+                // and the button is actually visible on the page
+                if (!hasViewedTag && btn.offsetParent !== null) {
+                  btn.click();
+                  dismissedCount++;
+                }
+              });
+
+              resolve(dismissedCount);
+            }, 1000); // Keep a small delay for stability
           });
         },
-        args: ['button[aria-label^="Dismiss"]'],
+        args: [DISMISS_SELECTOR], // Pass the selector as an argument
       },
       (results) => {
+        if (chrome.runtime.lastError) {
+          console.error(
+            "Script execution failed:",
+            chrome.runtime.lastError.message
+          );
+          showNotification("Error dismissing jobs.");
+          return;
+        }
         if (results && results[0] && results[0].result !== undefined) {
           const count = results[0].result;
-          console.log(`Dismissed ${count} job(s).`);
-          showNotification(`Dismissed ${count} job(s).`);
+          showNotification(`Dismissed ${count} unviewed job(s)`);
+        } else {
+          // Handle cases where the script might not return a result as expected
+          console.log(
+            "Dismiss script finished, but no result count received.",
+            results
+          );
+          showNotification("Dismiss action completed.");
         }
       }
     );
